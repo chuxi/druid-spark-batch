@@ -55,6 +55,8 @@ class SparkBatchIndexTask(
   intervals: util.List[Interval],
   @JsonProperty("paths")
   dataFiles: util.List[String],
+  @JsonProperty("hiveSpec")
+  hiveSpec: HiveSpec,
   @JsonProperty("targetPartitionSize")
   targetPartitionSize: Long = SparkBatchIndexTask.DEFAULT_TARGET_PARTITION_SIZE,
   @JsonProperty("maxRowsInMemory")
@@ -209,6 +211,9 @@ class SparkBatchIndexTask(
 
   @JsonProperty("paths")
   def getDataFiles = dataFiles
+
+  @JsonProperty("hiveSpec")
+  def getHiveSpec = hiveSpec
 
   @JsonProperty("targetPartitionSize")
   def getTargetPartitionSize = targetPartitionSize_
@@ -417,6 +422,7 @@ object SparkBatchIndexTask
 
       val dataSegments = SparkDruidIndexer.loadData(
         task.getDataFiles,
+        task.getHiveSpec,
         new SerializedJson[DataSchema](task.getDataSchema),
         SparkBatchIndexTask
           .mapToSegmentIntervals(task.getIntervals, task.getDataSchema.getGranularitySpec.getSegmentGranularity),

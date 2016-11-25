@@ -52,6 +52,7 @@ import org.apache.hadoop.fs.Path
 import org.apache.hadoop.mapreduce.TaskAttemptID
 import org.apache.hadoop.util.Progressable
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{Partitioner, SparkContext}
 import org.joda.time.{DateTime, Interval}
@@ -64,6 +65,7 @@ object SparkDruidIndexer {
   private val log = new Logger(getClass)
   def loadData(
                 dataFiles: Seq[String],
+                hiveSpec: HiveSpec,
                 dataSchema: SerializedJson[DataSchema],
                 ingestIntervals: Iterable[Interval],
                 rowsPerPartition: Long,
@@ -81,47 +83,18 @@ object SparkDruidIndexer {
     logInfo(s"Starting caching of raw data for [$dataSource] over intervals [$ingestIntervals]")
     val passableIntervals = ingestIntervals.foldLeft(Seq[Interval]())((a, b) => a ++ Seq(b)) // Materialize for passing
 
-    val totalGZSize = dataFiles.map(
-      s => {
-        val p = new Path(s)
-        val fs = p.getFileSystem(sc.hadoopConfiguration)
-        fs.getFileStatus(p).getLen
-      }
-    ).sum
-    val startingPartitions = (totalGZSize / (100L << 20)).toInt + 1
 
-    logInfo(s"Splitting [$totalGZSize] gz bytes into [$startingPartitions] partitions")
 
     // Hadoopify the data so it doesn't look so silly in Spark's DAG
-    val baseData = sc.textFile(dataFiles mkString ",")
-      // Input data is probably in gigantic files, so redistribute
-      .filter(
-      s => {
-        val row = dataSchema.getDelegate.getParser match {
-          case x: StringInputRowParser => x.parse(s)
-          case x: HadoopyStringInputRowParser => x.parse(s)
-          case x: ProtoBufInputRowParser => throw new
-              UnsupportedOperationException("Cannot use Protobuf for text input")
-          case x =>
-            logTrace(
-              "Could not figure out how to handle class " +
-                s"[${x.getClass.getCanonicalName}]. " +
-                "Hoping it can handle string input"
-            )
-            x.asInstanceOf[InputRowParser[Any]].parse(s)
-        }
-        passableIntervals.exists(_.contains(row.getTimestamp))
-      }
-    )
-      .repartition(startingPartitions)
-      // Persist the strings only rather than the event map
-      // We have to do the parsing twice this way, but serde of the map is killer as well
-      .persist(StorageLevel.DISK_ONLY)
-      .mapPartitions(
-        it => {
-          val i = dataSchema.getDelegate.getParser match {
-            case x: StringInputRowParser => it.map(x.parse)
-            case x: HadoopyStringInputRowParser => it.map(x.parse)
+    val baseData = if (dataFiles != null && dataFiles.nonEmpty) {
+      val startingPartitions = calculateRepartitionSize(dataFiles, sc)
+      sc.textFile(dataFiles mkString ",")
+        // Input data is probably in gigantic files, so redistribute
+        .filter(
+        s => {
+          val row = dataSchema.getDelegate.getParser match {
+            case x: StringInputRowParser => x.parse(s)
+            case x: HadoopyStringInputRowParser => x.parse(s)
             case x: ProtoBufInputRowParser => throw new
                 UnsupportedOperationException("Cannot use Protobuf for text input")
             case x =>
@@ -130,22 +103,112 @@ object SparkDruidIndexer {
                   s"[${x.getClass.getCanonicalName}]. " +
                   "Hoping it can handle string input"
               )
-              it.map(x.asInstanceOf[InputRowParser[Any]].parse)
+              x.asInstanceOf[InputRowParser[Any]].parse(s)
           }
-          val queryGran = dataSchema.getDelegate.getGranularitySpec.getQueryGranularity
-          val segmentGran = dataSchema.getDelegate.getGranularitySpec.getSegmentGranularity
-          i.map(
-            r => {
-              var k: Long = queryGran.truncate(r.getTimestampFromEpoch)
-              if (k < 0) {
-                // Example: AllGranularity
-                k = segmentGran.truncate(new DateTime(r.getTimestampFromEpoch)).getMillis
-              }
-              k -> r.asInstanceOf[MapBasedInputRow].getEvent
-            }
-          )
+          passableIntervals.exists(_.contains(row.getTimestamp))
         }
       )
+        .repartition(startingPartitions)
+        // Persist the strings only rather than the event map
+        // We have to do the parsing twice this way, but serde of the map is killer as well
+        .persist(StorageLevel.DISK_ONLY)
+        .mapPartitions(
+          it => {
+            val i = dataSchema.getDelegate.getParser match {
+              case x: StringInputRowParser => it.map(x.parse)
+              case x: HadoopyStringInputRowParser => it.map(x.parse)
+              case x: ProtoBufInputRowParser => throw new
+                  UnsupportedOperationException("Cannot use Protobuf for text input")
+              case x =>
+                logTrace(
+                  "Could not figure out how to handle class " +
+                    s"[${x.getClass.getCanonicalName}]. " +
+                    "Hoping it can handle string input"
+                )
+                it.map(x.asInstanceOf[InputRowParser[Any]].parse)
+            }
+            val queryGran = dataSchema.getDelegate.getGranularitySpec.getQueryGranularity
+            val segmentGran = dataSchema.getDelegate.getGranularitySpec.getSegmentGranularity
+            i.map(
+              r => {
+                var k: Long = queryGran.truncate(r.getTimestampFromEpoch)
+                if (k < 0) {
+                  // Example: AllGranularity
+                  k = segmentGran.truncate(new DateTime(r.getTimestampFromEpoch)).getMillis
+                }
+                k -> r.asInstanceOf[MapBasedInputRow].getEvent
+              }
+            )
+          }
+        )
+    } else if (hiveSpec != null && hiveSpec.getTable != null) {   // 此处为hive模式
+      // 传入Row[Map[String, Object]]
+      val session = SparkSession.builder.enableHiveSupport().getOrCreate()
+      // 计算startingPartitions
+      val partitionsInfo: Seq[String] = if (hiveSpec.getPartitions != null && hiveSpec.getPartitions.nonEmpty) {
+        hiveSpec.getPartitions.map{ p =>
+          session.sql(s"describe formatted ${hiveSpec.getTable} partition(${p._1} = '${p._2}')")
+            .collect().filter(_.getString(0).startsWith("Location"))
+            .map(_.getString(1))
+            .head
+        }.toSeq
+      } else {
+        // 返回表在hdfs上的路径
+        Seq(session.sql(s"describe formatted ${hiveSpec.getTable}")
+          .collect().filter(_.getString(0).startsWith("Location"))
+          .map(_.getString(1))
+          .head)
+      }
+
+      val startingPartitions = calculateRepartitionSize(partitionsInfo, sc)
+
+      // 组装sql和partitions
+      val columns = if (hiveSpec.getColumns != null && hiveSpec.getColumns.nonEmpty) {
+        hiveSpec.getColumns.asScala.mkString(" , ")
+      } else {
+        "*"
+      }
+
+      val partitions = if (hiveSpec.getPartitions != null && hiveSpec.getPartitions.nonEmpty) {
+        "where " + hiveSpec.getPartitions.map(p => s"${p._1} = '${p._2}'").mkString(" and ")
+      } else {
+        ""
+      }
+
+      val sql =
+        s"""
+          |select $columns
+          |from ${hiveSpec.getTable}
+          |$partitions
+        """.stripMargin
+
+      val df = session.sql(sql)
+      val fields = df.schema.fieldNames
+      val timestampColumn = dataSchema.getDelegate.getParser
+        .getParseSpec.getTimestampSpec.getTimestampColumn
+      // 转化,过滤不存在时间column的数据
+      df.rdd.map(row => {
+        row.getValuesMap(fields).filter(_._2 != null)
+      }).filter(_.contains(timestampColumn))
+        .repartition(startingPartitions).mapPartitions(it => {
+        val parser = dataSchema.getDelegate.getParser.asInstanceOf[InputRowParser[Any]]
+        val i = it.map(r => parser.parse(r.asJava))
+        val queryGran = dataSchema.getDelegate.getGranularitySpec.getQueryGranularity
+        val segmentGran = dataSchema.getDelegate.getGranularitySpec.getSegmentGranularity
+        i.map(
+          r => {
+            var k: Long = queryGran.truncate(r.getTimestampFromEpoch)
+            if (k < 0) {
+              // Example: AllGranularity
+              k = segmentGran.truncate(new DateTime(r.getTimestampFromEpoch)).getMillis
+            }
+            k -> r.asInstanceOf[MapBasedInputRow].getEvent
+          }
+        )
+      })
+    } else {
+      throw new Exception("Wrong Configuration, must set paths or hiveSpec")
+    }
 
     logInfo("Starting uniqes")
     val optionalDims: Option[Set[String]] = if (dataSchema.getDelegate.getParser.getParseSpec.getDimensionsSpec.hasCustomDimensions) {
@@ -389,6 +452,19 @@ object SparkDruidIndexer {
     val results = partitioned_data.collect().map(_.getDelegate)
     logInfo(s"Finished with ${util.Arrays.deepToString(results.map(_.toString))}")
     results.toSeq
+  }
+
+  private def calculateRepartitionSize(files: Seq[String], sc: SparkContext): Int = {
+    val totalGZSize = files.map(
+      s => {
+        val p = new Path(s)
+        val fs = p.getFileSystem(sc.hadoopConfiguration)
+        fs.globStatus(p).map(_.getLen).sum
+      }
+    ).sum
+    val startingPartitions = (totalGZSize / (100L << 20)).toInt + 1
+    logInfo(s"Splitting [$totalGZSize] gz bytes into [$startingPartitions] partitions")
+    startingPartitions
   }
 
   /**

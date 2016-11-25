@@ -179,6 +179,7 @@ object TestScalaBatchIndexTask
     dataSchema,
     Seq(interval),
     dataFiles,
+    null,
     rowsPerPartition,
     rowsPerPersist,
     properties,

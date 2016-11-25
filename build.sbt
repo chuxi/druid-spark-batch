@@ -27,13 +27,13 @@ scalaVersion := "2.11.7"
 val druid_version = "0.9.1.1"
 // This is just used here for Path, so anything that doesn't break spark should be fine
 val hadoop_version = "2.4.0"
-val spark_version = "2.0.0"
+val spark_version = "2.0.2"
 val guava_version = "16.0.1"
 val mesos_version = "0.25.0"
 
-val sparkDep = ("org.apache.spark" %% "spark-core" % spark_version
+val sparkDep = ("org.apache.spark" %% "spark-hive" % spark_version
   exclude("org.roaringbitmap", "RoaringBitmap")
-  exclude("log4j", "log4j")
+//  exclude("log4j", "log4j")
   exclude("org.slf4j", "slf4j-log4j12")
   exclude("com.google.guava", "guava")
   exclude("org.apache.hadoop", "hadoop-client")
