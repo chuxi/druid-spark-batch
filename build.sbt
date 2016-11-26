@@ -140,8 +140,8 @@ resolvers += "JitPack.IO" at "https://jitpack.io"
 publishMavenStyle := true
 
 //TODO: remove this before moving to druid.io
-publishTo := Some("central-local" at "https://metamx.artifactoryonline.com/metamx/libs-releases-local")
-pomIncludeRepository := { _ => false }
+//publishTo := Some("central-local" at "https://metamx.artifactoryonline.com/metamx/libs-releases-local")
+//pomIncludeRepository := { _ => false }
 
 pomExtra := (
   <scm>
