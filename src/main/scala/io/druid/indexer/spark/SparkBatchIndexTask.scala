@@ -267,7 +267,8 @@ object SparkBatchIndexTask
     "com.metamx",
     "druid",
     "io.druid",
-    "hadoop"
+    "hadoop",
+    "spark"
   )
 
   def getKryoClasses() = Array(
