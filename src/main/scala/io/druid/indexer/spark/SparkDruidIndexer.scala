@@ -147,7 +147,7 @@ object SparkDruidIndexer {
       // 计算startingPartitions
       val partitionsInfo: Seq[String] = if (hiveSpec.getPartitions != null && hiveSpec.getPartitions.nonEmpty) {
         hiveSpec.getPartitions.map{ p =>
-          session.sql(s"describe formatted ${hiveSpec.getTable} partition(${p._1} = '${p._2}')")
+          session.sql(s"describe formatted ${hiveSpec.getTable} partition(${p.getPkey} = '${p.getPvalue}')")
             .collect().filter(_.getString(0).startsWith("Location"))
             .map(_.getString(1))
             .head
@@ -170,7 +170,7 @@ object SparkDruidIndexer {
       }
 
       val partitions = if (hiveSpec.getPartitions != null && hiveSpec.getPartitions.nonEmpty) {
-        "where " + hiveSpec.getPartitions.map(p => s"${p._1} = '${p._2}'").mkString(" and ")
+        "where " + hiveSpec.getPartitions.map(p => s"${p.getPkey} = '${p.getPvalue}'").mkString(" and ")
       } else {
         ""
       }

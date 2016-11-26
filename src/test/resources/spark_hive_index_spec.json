@@ -1,0 +1,112 @@
+{
+  "type": "index_spark",
+  "id": "taskId",
+  "dataSchema": {
+    "dataSource": "hiveDataSource",
+    "parser": {
+      "type": "map",
+      "parseSpec": {
+        "format": "timeAndDims",
+        "timestampSpec": {
+          "column": "l_shipdate",
+          "format": "yyyy-MM-dd",
+          "missingValue": null
+        },
+        "dimensionsSpec": {
+          "dimensions": [
+            "l_orderkey",
+            "l_partkey",
+            "l_suppkey",
+            "l_linenumber",
+            "l_returnflag",
+            "l_linestatus",
+            "l_shipinstruct",
+            "l_shipmode",
+            "l_comment"
+          ],
+          "dimensionExclusions": [
+            "l_commitdate",
+            "l_receiptdate",
+            "l_tax",
+            "l_quantity",
+            "count",
+            "l_extendedprice",
+            "l_shipdate",
+            "l_discount"
+          ],
+          "spatialDimensions": []
+        }
+      }
+    },
+    "metricsSpec": [
+      {
+        "type": "count",
+        "name": "count"
+      },
+      {
+        "type": "longSum",
+        "name": "L_QUANTITY_longSum",
+        "fieldName": "l_quantity"
+      },
+      {
+        "type": "doubleSum",
+        "name": "L_EXTENDEDPRICE_doubleSum",
+        "fieldName": "l_extendedprice"
+      },
+      {
+        "type": "doubleSum",
+        "name": "L_DISCOUNT_doubleSum",
+        "fieldName": "l_discount"
+      },
+      {
+        "type": "doubleSum",
+        "name": "L_TAX_doubleSum",
+        "fieldName": "l_tax"
+      }
+    ],
+    "granularitySpec": {
+      "type": "uniform",
+      "segmentGranularity": "YEAR",
+      "queryGranularity": {
+        "type": "duration",
+        "duration": 86400000,
+        "origin": "1970-01-01T00:00:00.000Z"
+      },
+      "intervals": [
+        "1992-01-01T00:00:00.000Z/1999-01-01T00:00:00.000Z"
+      ]
+    }
+  },
+  "hiveSpec": {
+    "table": "src",
+    "partitions": [
+      { "pkey": "time", "pvalue": "201611230800" }
+    ]
+  },
+  "intervals": [
+    "1992-01-01T00:00:00.000Z/1999-01-01T00:00:00.000Z"
+  ],
+  "targetPartitionSize": 8139,
+  "maxRowsInMemory": 389,
+  "properties": {
+    "some.property": "someValue",
+    "java.util.logging.manager": "org.apache.logging.log4j.jul.LogManager",
+    "user.timezone": "UTC",
+    "org.jboss.logging.provider": "log4j2",
+    "file.encoding": "UTF-8",
+    "druid.processing.columnCache.sizeBytes": "1000000000"
+  },
+  "master": "local[999]",
+  "context": {},
+  "indexSpec": {
+    "bitmap": {
+      "type": "concise"
+    },
+    "dimensionCompression": null,
+    "metricCompression": null
+  },
+  "classpathPrefix": "somePrefix.jar",
+  "hadoopDependencyCoordinates": [
+    "org.apache.spark:spark-hive_2.11:2.0.2-mmx0"
+  ]
+}

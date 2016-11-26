@@ -10,10 +10,13 @@ import java.util
 class HiveSpec(@JsonProperty("table")
                table: String,
                @JsonProperty("partitions")
-               partitions: util.Map[String, String],
+               partitions: util.List[PartitionInfo],
                @JsonProperty("columns")
                columns: java.util.List[String]) {
 
+  if (table == null) {
+    throw new Exception("Missing table definition in HiveSpec!")
+  }
 
   @JsonProperty("table")
   def getTable = table
@@ -23,4 +26,18 @@ class HiveSpec(@JsonProperty("table")
 
   @JsonProperty("columns")
   def getColumns = columns
+
+}
+
+
+@JsonCreator
+class PartitionInfo(@JsonProperty("pkey") pkey: String,
+                    @JsonProperty("pvalue") pvalue: String) {
+
+  @JsonProperty("pkey")
+  def getPkey = pkey
+
+  @JsonProperty("pvalue")
+  def getPvalue = pvalue
+
 }
