@@ -162,25 +162,28 @@ object SparkDruidIndexer {
 
       val startingPartitions = calculateRepartitionSize(partitionsInfo, sc)
 
-      // 组装sql和partitions
-      val columns = if (hiveSpec.getColumns != null && hiveSpec.getColumns.nonEmpty) {
-        hiveSpec.getColumns.asScala.mkString(" , ")
+      val sql = if (hiveSpec.getSql != null && hiveSpec.getSql.nonEmpty) {
+        hiveSpec.getSql
       } else {
-        "*"
-      }
+        // 组装sql和partitions
+        val columns = if (hiveSpec.getColumns != null && hiveSpec.getColumns.nonEmpty) {
+          hiveSpec.getColumns.asScala.mkString(" , ")
+        } else {
+          "*"
+        }
 
-      val partitions = if (hiveSpec.getPartitions != null && hiveSpec.getPartitions.nonEmpty) {
-        "where " + hiveSpec.getPartitions.map(p => s"${p.getPkey} = '${p.getPvalue}'").mkString(" and ")
-      } else {
-        ""
-      }
+        val partitions = if (hiveSpec.getPartitions != null && hiveSpec.getPartitions.nonEmpty) {
+          "where " + hiveSpec.getPartitions.map(p => s"${p.getPkey} = '${p.getPvalue}'").mkString(" and ")
+        } else {
+          ""
+        }
 
-      val sql =
         s"""
-          |select $columns
-          |from ${hiveSpec.getTable}
-          |$partitions
+           |select $columns
+           |from ${hiveSpec.getTable}
+           |$partitions
         """.stripMargin
+      }
 
       val df = session.sql(sql)
       val fields = df.schema.fieldNames

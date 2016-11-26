@@ -17,7 +17,7 @@ object TestSparkHiveBatchIndexTask {
 
   val partitions = new util.ArrayList[PartitionInfo]()
   partitions.add(new PartitionInfo("time", "201611230800"))
-  val hiveSpec = new HiveSpec("src", partitions, null)
+  val hiveSpec = new HiveSpec("src", partitions, null, null)
 
   // 确定dataSchema, spark hive采用 MapInputRowParser, dataframe转换为key-value
   /**

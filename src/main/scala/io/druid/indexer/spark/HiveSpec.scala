@@ -12,7 +12,9 @@ class HiveSpec(@JsonProperty("table")
                @JsonProperty("partitions")
                partitions: util.List[PartitionInfo],
                @JsonProperty("columns")
-               columns: java.util.List[String]) {
+               columns: java.util.List[String],
+               @JsonProperty("sql")
+               sql: String) {
 
   if (table == null) {
     throw new Exception("Missing table definition in HiveSpec!")
@@ -26,6 +28,9 @@ class HiveSpec(@JsonProperty("table")
 
   @JsonProperty("columns")
   def getColumns = columns
+
+  @JsonProperty("sql")
+  def getSql = sql
 
 }
 
