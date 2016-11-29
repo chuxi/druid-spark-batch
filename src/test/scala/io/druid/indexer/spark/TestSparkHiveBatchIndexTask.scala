@@ -15,9 +15,9 @@ import scala.collection.JavaConverters._
 object TestSparkHiveBatchIndexTask {
   import TestScalaBatchIndexTask._
 
-  val partitions = new util.ArrayList[PartitionInfo]()
-  partitions.add(new PartitionInfo("time", "201611230800"))
-  val hiveSpec = new HiveSpec("src", partitions, null, null)
+  val partitions = new util.ArrayList[String]()
+  partitions.add("time = '201611230800'")
+  val hiveSpec = new HiveSpec("src", partitions, "select * from src where time = '201611230800'")
 
   // 确定dataSchema, spark hive采用 MapInputRowParser, dataframe转换为key-value
   /**

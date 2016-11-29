@@ -57,8 +57,8 @@ import org.apache.spark.storage.StorageLevel
 import org.apache.spark.{Partitioner, SparkContext}
 import org.joda.time.{DateTime, Interval}
 
-import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
+import scala.collection.JavaConversions._
 import scala.util.control.NonFatal
 
 object SparkDruidIndexer {
@@ -83,10 +83,8 @@ object SparkDruidIndexer {
     logInfo(s"Starting caching of raw data for [$dataSource] over intervals [$ingestIntervals]")
     val passableIntervals = ingestIntervals.foldLeft(Seq[Interval]())((a, b) => a ++ Seq(b)) // Materialize for passing
 
-
-
     // Hadoopify the data so it doesn't look so silly in Spark's DAG
-    val baseData = if (dataFiles != null && dataFiles.nonEmpty) {
+    val baseData = if (dataFiles.nonEmpty) {
       val startingPartitions = calculateRepartitionSize(dataFiles, sc)
       sc.textFile(dataFiles mkString ",")
         // Input data is probably in gigantic files, so redistribute
@@ -141,48 +139,33 @@ object SparkDruidIndexer {
             )
           }
         )
-    } else if (hiveSpec != null && hiveSpec.getTable != null) {   // 此处为hive模式
+    } else if (hiveSpec != null) {   // 此处为hive模式
       // 传入Row[Map[String, Object]]
       val session = SparkSession.builder.enableHiveSupport().getOrCreate()
       // 计算startingPartitions
-      val partitionsInfo: Seq[String] = if (hiveSpec.getPartitions != null && hiveSpec.getPartitions.nonEmpty) {
-        hiveSpec.getPartitions.map{ p =>
-          session.sql(s"describe formatted ${hiveSpec.getTable} partition(${p.getPkey} = '${p.getPvalue}')")
+      val partitionsInfo: Seq[String] =
+        if (hiveSpec.getPartitions == null || hiveSpec.getPartitions.isEmpty) {
+          // 返回表在hdfs上的路径
+          Seq(session.sql(s"describe formatted ${hiveSpec.getTable}")
             .collect().filter(_.getString(0).startsWith("Location"))
             .map(_.getString(1))
-            .head
-        }.toSeq
-      } else {
-        // 返回表在hdfs上的路径
-        Seq(session.sql(s"describe formatted ${hiveSpec.getTable}")
-          .collect().filter(_.getString(0).startsWith("Location"))
-          .map(_.getString(1))
-          .head)
-      }
+            .head)
+        } else {
+          hiveSpec.getPartitions.asScala.map{ p =>
+            session.sql(s"describe formatted ${hiveSpec.getTable} partition($p)")
+              .collect().filter(_.getString(0).startsWith("Location"))
+              .map(_.getString(1))
+              .head
+          }
+        }
+
 
       val startingPartitions = calculateRepartitionSize(partitionsInfo, sc)
 
       val sql = if (hiveSpec.getSql != null && hiveSpec.getSql.nonEmpty) {
         hiveSpec.getSql
       } else {
-        // 组装sql和partitions
-        val columns = if (hiveSpec.getColumns != null && hiveSpec.getColumns.nonEmpty) {
-          hiveSpec.getColumns.asScala.mkString(" , ")
-        } else {
-          "*"
-        }
-
-        val partitions = if (hiveSpec.getPartitions != null && hiveSpec.getPartitions.nonEmpty) {
-          "where " + hiveSpec.getPartitions.map(p => s"${p.getPkey} = '${p.getPvalue}'").mkString(" and ")
-        } else {
-          ""
-        }
-
-        s"""
-           |select $columns
-           |from ${hiveSpec.getTable}
-           |$partitions
-        """.stripMargin
+        throw new Exception("sql undefined in hiveSpec.")
       }
 
       val df = session.sql(sql)
@@ -222,7 +205,7 @@ object SparkDruidIndexer {
     }
 
     val uniquesEvents: RDD[(Long, util.Map[String, AnyRef])] = optionalDims match {
-      case Some(dims) =>baseData.mapValues(_.filterKeys(dims.contains))
+      case Some(dims) =>baseData.mapValues(_.filterKeys(dims))
       case None => baseData
     }
 
@@ -318,7 +301,7 @@ object SparkDruidIndexer {
             val hadoopFs = outPath.getFileSystem(hadoopConf)
             val dimSpec = dataSchema.getDelegate.getParser.getParseSpec.getDimensionsSpec
             val excludedDims = dimSpec.getDimensionExclusions
-            val finalDims: Option[util.List[String]] = if (dimSpec.hasCustomDimensions) Some(dimSpec.getDimensionNames.asScala) else None
+            val finalDims: Option[util.List[String]] = if (dimSpec.hasCustomDimensions) Some(dimSpec.getDimensionNames) else None
 
             val indices: util.List[IndexableAdapter] = rows.grouped(rowsPerPersist)
               .map(
@@ -460,9 +443,11 @@ object SparkDruidIndexer {
   private def calculateRepartitionSize(files: Seq[String], sc: SparkContext): Int = {
     val totalGZSize = files.map(
       s => {
+        logInfo(s"calculate file size: $s")
         val p = new Path(s)
         val fs = p.getFileSystem(sc.hadoopConfiguration)
-        fs.globStatus(p).map(_.getLen).sum
+        fs.globStatus(p)
+          .map(_.getLen).sum
       }
     ).sum
     val startingPartitions = (totalGZSize / (100L << 20)).toInt + 1

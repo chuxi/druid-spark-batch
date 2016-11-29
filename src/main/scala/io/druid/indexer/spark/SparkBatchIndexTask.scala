@@ -44,6 +44,7 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.joda.time.Interval
 
 import scala.collection.JavaConversions._
+import scala.collection.JavaConverters._
 
 @JsonCreator
 class SparkBatchIndexTask(
@@ -136,8 +137,8 @@ class SparkBatchIndexTask(
   override def getType: String = SparkBatchIndexTask.TASK_TYPE
 
   override def run(toolbox: TaskToolbox): TaskStatus = {
-    Preconditions.checkNotNull(dataFiles, "%s", "paths")
-    Preconditions.checkArgument(!dataFiles.isEmpty, "%s", "empty dataFiles")
+//    Preconditions.checkNotNull(dataFiles, "%s", "paths")
+//    Preconditions.checkArgument(!dataFiles.isEmpty, "%s", "empty dataFiles")
     Preconditions.checkNotNull(Strings.emptyToNull(dataSchema.getDataSource), "%s", "dataSource")
     Preconditions.checkNotNull(dataSchema.getParserMap, "%s", "parseSpec")
     Preconditions.checkNotNull(dataSchema.getGranularitySpec.getQueryGranularity, "%s", "queryGranularity")
@@ -421,8 +422,14 @@ object SparkBatchIndexTask
       val outputPath = args.get(2)
       log.debug("Using version [%s]", version)
 
+      val dataFiles: Seq[String] = if (task.getDataFiles != null) {
+        task.getDataFiles.asScala
+      } else {
+        Seq()
+      }
+
       val dataSegments = SparkDruidIndexer.loadData(
-        task.getDataFiles,
+        dataFiles,
         task.getHiveSpec,
         new SerializedJson[DataSchema](task.getDataSchema),
         SparkBatchIndexTask

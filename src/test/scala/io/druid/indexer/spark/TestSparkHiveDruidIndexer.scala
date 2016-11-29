@@ -110,7 +110,7 @@ class TestSparkHiveDruidIndexer extends FlatSpec with Matchers {
 
 
       val loadResults = SparkDruidIndexer.loadData(
-        null,
+        Seq(),
         hiveSpec,
         new SerializedJson(hiveDataSchema),
         SparkBatchIndexTask.mapToSegmentIntervals(Seq(interval), Granularity.YEAR),
