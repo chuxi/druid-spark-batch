@@ -1,0 +1,64 @@
+{
+  "type": "index_spark",
+  "dataSchema": {
+    "dataSource": "hive-test",
+    "parser": {
+      "type": "map",
+      "parseSpec": {
+        "format": "timeAndDims",
+        "timestampSpec": {
+          "column": "stm",
+          "format": "millis"
+        },
+        "dimensionsSpec": {
+          "dimensions": [
+            "ai", "d", "p", "osv", "bwv"
+          ],
+          "dimensionExclusions": [],
+          "spatialDimensions": []
+        }
+      }
+    },
+    "metricsSpec" : [{
+      "type" : "thetaSketch",
+      "name" : "count",
+      "fieldName" : "id"
+    }, {
+      "type" : "thetaSketch",
+      "name" : "distinctU",
+      "fieldName" : "u"
+    }],
+    "granularitySpec" : {
+      "type" : "uniform",
+      "segmentGranularity" : "hour",
+      "queryGranularity": { "type":"duration", "duration": 300 },
+      "intervals": ["2016-11-28T04:00:00.000Z/2016-11-28T05:00:00.000Z"]
+    }
+  },
+  "hiveSpec": {
+    "table": "liepin.visit",
+    "partitions": [
+      "time = '201611280400', platform = 'web'",
+      "time = '201611280430', platform = 'web'"
+    ],
+    "sql": "select stm, ai, d, p, osv, bwv, u, t, id from liepin.visit where time >= '201611280400' and time < '201611280500' and platform = 'web'"
+  },
+  "master": "yarn",
+  "indexSpec": {
+      "bitmap": {
+          "type": "roaring"
+      }
+  },
+  "intervals": ["2016-11-28T04:00:00.000Z/2016-11-28T05:00:00.000Z"],
+  "hadoopDependencyCoordinates": ["org.apache.spark:spark-hive_2.11:2.0.2"],
+  "properties": {
+    "spark.master": "yarn",
+    "spark.submit.deployMode": "client",
+    "spark.executor.instances": "4",
+    "spark.executor.memory": "2g",
+    "spark.executor.cores": "1",
+    "spark.yarn.am.memory": "2g",
+    "spark.yarn.executor.memoryOverhead": "1g",
+    "spark.files": "/apps/svr/druid/conf/druid/_common/jets3t.properties"
+  }
+}
