@@ -444,7 +444,7 @@ object SparkDruidIndexer {
     val totalGZSize = files.map(
       s => {
         logInfo(s"calculate file size: $s")
-        val p = new Path(s)
+        val p = new Path(s + "/*")
         val fs = p.getFileSystem(sc.hadoopConfiguration)
         fs.globStatus(p)
           .map(_.getLen).sum
