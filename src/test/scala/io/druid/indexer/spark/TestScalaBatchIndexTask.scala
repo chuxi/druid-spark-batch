@@ -21,6 +21,7 @@ package io.druid.indexer.spark
 
 import java.util.Properties
 import java.util.Collections
+
 import com.fasterxml.jackson.core.`type`.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.inject.name.Names
@@ -34,11 +35,13 @@ import io.druid.indexing.common.task.Task
 import io.druid.initialization.Initialization
 import io.druid.query.aggregation.{AggregatorFactory, CountAggregatorFactory, DoubleSumAggregatorFactory, LongSumAggregatorFactory}
 import io.druid.segment.IndexSpec
+import io.druid.segment.data.CompressedObjectStrategy.CompressionStrategy
 import io.druid.segment.data.RoaringBitmapSerdeFactory
 import io.druid.segment.indexing.DataSchema
 import io.druid.segment.indexing.granularity.{GranularitySpec, UniformGranularitySpec}
 import org.joda.time.Interval
 import org.scalatest.{FlatSpec, Matchers}
+
 import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
 
@@ -267,7 +270,7 @@ class TestScalaBatchIndexTask extends FlatSpec with Matchers
 
     task1 should
       not equal
-      buildSparkBatchIndexTask(indexSpec = new IndexSpec(new RoaringBitmapSerdeFactory(), "lzf", "lzf"))
+      buildSparkBatchIndexTask(indexSpec = new IndexSpec(new RoaringBitmapSerdeFactory(false), CompressionStrategy.LZ4, CompressionStrategy.LZ4, null))
 
     task1 should not equal buildSparkBatchIndexTask(context = Map[String, Object]("test" -> "oops"))
 
